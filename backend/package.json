@@ -20,5 +20,11 @@
   },
   "scripts": {
     "dev": "bun --watch src/index.ts"
-  }
+  },
+  "version": "1.0.0",
+  "description": "To install dependencies:",
+  "main": "test-api-document.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

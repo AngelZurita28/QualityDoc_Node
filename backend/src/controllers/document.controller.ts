@@ -72,18 +72,20 @@ export const syncDocument = async (req: Request, res: Response): Promise<void> =
     try {
         console.log("Incoming request body:", req.body);
         const documentData = req.body;
+        const docId = documentData.id || documentData.Id;
 
-        if (!documentData.Id) {
+        if (!docId) {
+            console.log("Sincronización abortada: Falta el campo id");
             res.status(400).json({
                 status: 'error',
-                message: 'El campo "Id" es obligatorio para sincronizar con Firestore.',
+                message: 'El campo "id" es obligatorio para sincronizar con Firestore.',
             });
             return;
         }
 
         const iaTags = await generarEtiquetasIA(
-            documentData.Title || '',
-            documentData.Description || ''
+            documentData.title || documentData.Title || '',
+            documentData.description || documentData.Description || ''
         );
 
         if (!documentData.metadata) {
@@ -92,7 +94,7 @@ export const syncDocument = async (req: Request, res: Response): Promise<void> =
         const existingTags = Array.isArray(documentData.metadata.tags) ? documentData.metadata.tags : [];
         documentData.metadata.tags = [...new Set([...existingTags, ...iaTags])];
 
-        const docRef = db.collection('documents').doc(documentData.Id);
+        const docRef = db.collection('documents').doc(String(docId));
 
         const dataToSave = {
             ...documentData,
