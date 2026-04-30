@@ -70,7 +70,7 @@ Descripción: ${descripcion}
 
 export const syncDocument = async (req: Request, res: Response): Promise<void> => {
     try {
-        console.log("LLEGAreq");
+        console.log("Incoming request body:", req.body);
         const documentData = req.body;
 
         if (!documentData.Id) {
