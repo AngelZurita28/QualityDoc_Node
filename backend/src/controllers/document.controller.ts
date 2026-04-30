@@ -2,24 +2,16 @@ import { type Request, type Response } from 'express';
 import { db } from '../../config/firebase';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Inicializar el SDK de Google Generative AI
-// Asegúrate de tener GEMINI_API_KEY en tus variables de entorno (.env)
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
-/**
- * Función auxiliar para limpiar y normalizar etiquetas
- * Elimina acentos, pasa a minúsculas y separa por espacios o guiones
- */
 function normalizeTags(tags: string[]): string[] {
     const processed = new Set<string>();
     tags.forEach(tag => {
-        // Eliminar acentos y pasar a minúsculas
         const cleanTag = tag.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-        // Dividir por espacios, guiones o guiones bajos
         const words = cleanTag.split(/[\s\-_]+/);
         words.forEach(word => {
-            const cleanWord = word.replace(/[^\w]/g, ''); // dejar solo alfanumérico
-            if (cleanWord.length > 2) { // ignorar palabras muy cortas (de 1 o 2 letras)
+            const cleanWord = word.replace(/[^\w]/g, '');
+            if (cleanWord.length > 2) {
                 processed.add(cleanWord);
             }
         });
@@ -78,9 +70,9 @@ Descripción: ${descripcion}
 
 export const syncDocument = async (req: Request, res: Response): Promise<void> => {
     try {
+        console.log("LLEGAreq");
         const documentData = req.body;
 
-        // Validar que venga el ID al menos, para usarlo en Firestore
         if (!documentData.Id) {
             res.status(400).json({
                 status: 'error',
@@ -89,37 +81,30 @@ export const syncDocument = async (req: Request, res: Response): Promise<void> =
             return;
         }
 
-        // Generar etiquetas usando IA basado en Título y Descripción
         const iaTags = await generarEtiquetasIA(
             documentData.Title || '',
             documentData.Description || ''
         );
 
-        // Asegurarnos de que exista el objeto metadata
         if (!documentData.metadata) {
             documentData.metadata = {};
         }
-
-        // Unir las etiquetas generadas por IA con las que ya pudieran venir, eliminando duplicados
         const existingTags = Array.isArray(documentData.metadata.tags) ? documentData.metadata.tags : [];
         documentData.metadata.tags = [...new Set([...existingTags, ...iaTags])];
 
-        // Referencia a la colección 'documents' usando el mismo Id de SQL
         const docRef = db.collection('documents').doc(documentData.Id);
 
-        // Se agrega un timestamp de sincronización
         const dataToSave = {
             ...documentData,
             syncedAt: new Date().toISOString()
         };
 
-        // Guardar o actualizar en Firestore
         await docRef.set(dataToSave, { merge: true });
-
-        // Solo regresar código de éxito (HTTP 200) para que la app cliente actualice su base de datos
+        console.log("Documento sincronizado exitosamente", dataToSave);
         res.sendStatus(200);
     } catch (error) {
         console.error('Error sincronizando documento:', error);
+        console.log("Error sincronizando documento:", error);
         res.status(500).json({
             status: 'error',
             message: 'Error al guardar el documento en Firestore',
