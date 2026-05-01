@@ -286,6 +286,18 @@ La API valida estos campos según el valor de `metadata.category`:
 }
 ```
 
+### 🟠 Error `409` — Documento ya existe
+
+```json
+{
+  "status": "error",
+  "message": "El documento con ID \"B7853A1B-...\" ya existe en Firestore. No se permite duplicar.",
+  "processingTimeMs": 132
+}
+```
+
+**Acción para .NET:** El documento ya fue sincronizado previamente. Verificar que `SyncFirebase = 1` esté marcado. Si se necesita actualizar el documento, se debe usar un ID nuevo (nueva versión).
+
 ### 🔴 Error `500` — Error interno (Firebase / IA / Red)
 
 ```json

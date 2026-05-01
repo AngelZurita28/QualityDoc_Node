@@ -197,7 +197,21 @@ export const syncDocument = async (req: Request, res: Response): Promise<void> =
 
         console.log(`📄 Recibido documento ID: ${docId} — "${title}"`);
 
-        // ── 3. Validar y limpiar metadata (Nivel 1 — Universal) ──
+        // ── 3. Verificar que el ID no exista ya en Firestore ──
+        const docRef = db.collection('documents').doc(String(docId));
+        const existingDoc = await withTimeout(docRef.get(), 10000, 'Firestore read');
+        if (existingDoc.exists) {
+            const elapsed = Date.now() - startTime;
+            console.warn(`⚠️ Documento ID ${docId} ya existe en Firestore. Rechazado.`);
+            res.status(409).json({
+                status: 'error',
+                message: `El documento con ID "${docId}" ya existe en Firestore. No se permite duplicar.`,
+                processingTimeMs: elapsed,
+            });
+            return;
+        }
+
+        // ── 4. Validar y limpiar metadata (Nivel 1 — Universal) ──
         const rawMeta = data.metadata || {};
         const { cleaned: universalMeta, warnings } = validateUniversalMeta(rawMeta);
 
@@ -258,9 +272,8 @@ export const syncDocument = async (req: Request, res: Response): Promise<void> =
             syncedAt: new Date().toISOString(),
         };
 
-        // ── 7. Guardar en Firestore con timeout de seguridad ──
-        const docRef = db.collection('documents').doc(String(docId));
-        await withTimeout(docRef.set(documentToSave, { merge: true }), 15000, 'Firestore write');
+        // ── 8. Guardar en Firestore con timeout de seguridad ──
+        await withTimeout(docRef.set(documentToSave), 15000, 'Firestore write');
 
         const elapsed = Date.now() - startTime;
         console.log(`✅ Documento sincronizado en ${elapsed}ms — Tags: ${allTags.length}`);
