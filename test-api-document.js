@@ -18,10 +18,10 @@ const pathModule = require('path');
 // ║      EDITAR AQUÍ PARA PROBAR         ║
 // ╚═══════════════════════════════════════╝
 
-const API_URL     = 'http://localhost:3000/api/documents';
-const FILE_PATH   = pathModule.join(__dirname, 'document.docx'); // ← Cambia la ruta al archivo que quieras probar
+const API_URL = 'http://localhost:3000/api/documents';
+const FILE_PATH = pathModule.join(__dirname, 'document.docx'); // ← Cambia la ruta al archivo que quieras probar
 const DOCUMENT_ID = crypto.randomUUID().toUpperCase();           // ← O pon un ID fijo: 'MI-DOC-001'
-const DOC_TITLE       = 'Documento de prueba ISO 27001';
+const DOC_TITLE = 'Documento de prueba ISO 27001';
 const DOC_DESCRIPTION = 'Manual de seguridad de la información para la planta industrial';
 
 // ═══════════════════════════════════════════════════════════════
@@ -235,8 +235,10 @@ async function run() {
         description: DOC_DESCRIPTION,
         filePath: `/uploads/${fileName}`,
         authorId: 101,
+        authorName: 'Juan Pérez',
         statusId: 3,
         companyId: 1,
+        companyName: 'Google LLC',
         versionNumber: 1,
         isLatest: true,
         metadata: {
