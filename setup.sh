@@ -55,7 +55,7 @@ cat <<EOF > .env
 MONGO_USER=$mongoUser
 MONGO_PASS=$mongoPasswordPlain
 GEMINI_API_KEY=$geminiKey
-GEMINI_MODEL=gemini-2.5-flash-lite
+GEMINI_MODEL=gemini-3.1-flash-lite
 PORT=3000
 JSON_BODY_LIMIT=15mb
 MONGO_DB=QualityDocDB

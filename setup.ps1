@@ -41,7 +41,7 @@ Write-Host "`nGenerando archivo .env..."
 Set-Content -Path ".env" -Value "MONGO_USER=$mongoUser" -Encoding ascii
 Add-Content -Path ".env" -Value "MONGO_PASS=$mongoPasswordPlain" -Encoding ascii
 Add-Content -Path ".env" -Value "GEMINI_API_KEY=$geminiKey" -Encoding ascii
-Add-Content -Path ".env" -Value "GEMINI_MODEL=gemini-2.5-flash-lite" -Encoding ascii
+Add-Content -Path ".env" -Value "GEMINI_MODEL=gemini-3.1-flash-lite" -Encoding ascii
 Add-Content -Path ".env" -Value "PORT=3000" -Encoding ascii
 Add-Content -Path ".env" -Value "JSON_BODY_LIMIT=15mb" -Encoding ascii
 Add-Content -Path ".env" -Value "MONGO_DB=QualityDocDB" -Encoding ascii
