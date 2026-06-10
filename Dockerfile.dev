@@ -1,0 +1,13 @@
+# Usa una imagen ligera de Node.js
+FROM node:20-slim
+
+# Instala pnpm globalmente
+RUN npm install -g pnpm
+
+# Instala dependencias necesarias para compilar algunos modulos de node si fuera necesario
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# El puerto se define en el .env, pero por defecto suele ser 3000
+EXPOSE 3000
