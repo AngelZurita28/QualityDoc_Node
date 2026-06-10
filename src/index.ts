@@ -37,6 +37,18 @@ app.get('/api/test-db', async (req: Request, res: Response) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`Servidor backend corriendo en el puerto ${PORT}`);
+});
+
+server.on('error', (error: NodeJS.ErrnoException) => {
+    if (error.code === 'EADDRINUSE') {
+        console.error(`El puerto ${PORT} ya está en uso. Cambia PORT en .env o detén el proceso que lo ocupa.`);
+    } else if (error.code === 'EACCES' || error.code === 'EPERM') {
+        console.error(`No hay permisos para escuchar en el puerto ${PORT}. Revisa permisos del entorno o usa otro puerto.`);
+    } else {
+        console.error('Error iniciando el servidor:', error.message);
+    }
+
+    process.exit(1);
 });

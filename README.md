@@ -9,6 +9,8 @@ El proyecto utiliza Docker para facilitar el despliegue del entorno de desarroll
 ### Prerrequisitos
 *   **Docker** y **Docker Compose** instalados.
 *   **Git** para clonar el repositorio.
+*   Puerto **3000** disponible para la API.
+*   Puerto **27017** disponible para MongoDB.
 
 ### Pasos Rápidos
 
@@ -28,17 +30,66 @@ El proyecto utiliza Docker para facilitar el despliegue del entorno de desarroll
     ```
 
 ### ¿Qué hace el script?
-1.  Crea un archivo `.env` con tus credenciales de MongoDB y tu Gemini API Key.
+1.  Crea un archivo `.env` con la configuración completa del entorno:
+    ```env
+    MONGO_USER=...
+    MONGO_PASS=...
+    GEMINI_API_KEY=...
+    GEMINI_MODEL=gemini-2.5-flash-lite
+    PORT=3000
+    JSON_BODY_LIMIT=15mb
+    MONGO_DB=QualityDocDB
+    ```
 2.  Levanta un contenedor de **MongoDB** con persistencia de datos.
 3.  Levanta el contenedor de la **API (Node.js)** en modo `network_mode: host`.
     *   Esto permite que la API sea accesible desde tu red local mediante tu dirección IP.
-    *   La API se conecta a MongoDB a través de `localhost:27017`.
+    *   La API se conecta a MongoDB a través de `127.0.0.1:27017`.
+    *   El backend construye internamente la URI de MongoDB usando `MONGO_USER`, `MONGO_PASS` y `MONGO_DB`.
 4.  Instala las dependencias necesarias mediante `pnpm` automáticamente dentro del contenedor.
 5.  Inicia el servidor en modo desarrollo con auto-recarga.
+6.  Verifica que la API responda en `http://localhost:3000/api/saludo`.
 
 ### Uso Diario
 
 *   **Encender:** `docker compose up -d`
 *   **Apagar:** `docker compose down`
+*   **Ver logs de la API:** `docker compose logs -f node_backend`
+*   **Ver estado:** `docker compose ps`
 
 La API estará disponible en [http://localhost:3000](http://localhost:3000).
+
+### Verificación
+
+Después de ejecutar el setup, prueba:
+
+```bash
+curl http://localhost:3000/api/saludo
+curl http://localhost:3000/api/test-db
+curl "http://localhost:3000/api/documents/search?q=hola%20mundo"
+```
+
+La búsqueda de `hola mundo` debe responder al menos con:
+
+```json
+{"status":"success","data":[],"searchTags":["hola","mundo"]}
+```
+
+### Integración con otra app
+
+Si una app Vite usa proxy hacia este backend, configura el target a:
+
+```text
+http://localhost:3000
+```
+
+Un error `502 Bad Gateway` desde Vite normalmente significa que el contenedor `node_backend` no está corriendo o no está escuchando en el puerto `3000`. Revisa:
+
+```bash
+docker compose ps
+docker compose logs -f node_backend
+curl http://localhost:3000/api/saludo
+```
+
+### Nota Importante
+
+Los scripts `setup.sh` y `setup.ps1` ejecutan `docker compose down -v` antes de levantar el entorno. Eso elimina el volumen de MongoDB y borra los datos locales existentes. Para uso diario, usa `docker compose up -d` y `docker compose down`.

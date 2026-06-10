@@ -1,6 +1,7 @@
 import { MongoClient, type Collection, type Db } from 'mongodb';
 
-const mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/QualityDocDB';
+const dbNameFromEnv = process.env.MONGO_DB || 'QualityDocDB';
+const mongoUri = process.env.MONGO_URI || buildMongoUri(dbNameFromEnv);
 const dbName = process.env.MONGO_DB || getDatabaseNameFromUri(mongoUri) || 'QualityDocDB';
 
 const client = new MongoClient(mongoUri);
@@ -43,4 +44,15 @@ function getDatabaseNameFromUri(uri: string): string | null {
     } catch {
         return null;
     }
+}
+
+function buildMongoUri(dbName: string): string {
+    const user = process.env.MONGO_USER;
+    const pass = process.env.MONGO_PASS;
+
+    if (user && pass) {
+        return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@127.0.0.1:27017/${dbName}?authSource=admin`;
+    }
+
+    return `mongodb://127.0.0.1:27017/${dbName}`;
 }

@@ -55,15 +55,37 @@ cat <<EOF > .env
 MONGO_USER=$mongoUser
 MONGO_PASS=$mongoPasswordPlain
 GEMINI_API_KEY=$geminiKey
+GEMINI_MODEL=gemini-2.5-flash-lite
 PORT=3000
+JSON_BODY_LIMIT=15mb
+MONGO_DB=QualityDocDB
 EOF
 
 # 4. Limpiar e Iniciar Docker
 echo -e "\n${CYAN}Limpiando y levantando contenedores...${NC}"
-$DOCKER_COMPOSE_CMD down -v
-$DOCKER_COMPOSE_CMD up -d --build
+$DOCKER_COMPOSE_CMD down -v || exit 1
+$DOCKER_COMPOSE_CMD up -d --build || exit 1
+
+# 5. Verificar API
+echo -e "\n${CYAN}Verificando API en http://localhost:3000...${NC}"
+apiReady=false
+for i in {1..30}; do
+    if curl -fsS http://localhost:3000/api/saludo > /dev/null 2>&1; then
+        apiReady=true
+        break
+    fi
+    sleep 2
+done
+
+if [ "$apiReady" = false ]; then
+    echo -e "${RED}ERROR: La API no respondio en http://localhost:3000.${NC}"
+    echo -e "${YELLOW}Ultimos logs de node_backend:${NC}"
+    $DOCKER_COMPOSE_CMD logs --tail=80 node_backend
+    exit 1
+fi
 
 echo -e "\n${GREEN}========================================${NC}"
 echo -e "${GREEN}  ¡Entorno configurado con exito!       ${NC}"
 echo -e "${CYAN}  API en: http://localhost:3000        ${NC}"
+echo -e "${CYAN}  Prueba: curl http://localhost:3000/api/saludo${NC}"
 echo -e "${GREEN}========================================${NC}"

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   node_backend:
     build:
@@ -11,17 +9,19 @@ services:
     network_mode: host
     environment:
       - PORT=3000
-      - MONGO_URI=mongodb://${MONGO_USER}:${MONGO_PASS}@127.0.0.1:27017/QualityDocDB?authSource=admin
+      - JSON_BODY_LIMIT=${JSON_BODY_LIMIT:-15mb}
+      - MONGO_DB=QualityDocDB
       - MONGO_USER=${MONGO_USER}
       - MONGO_PASS=${MONGO_PASS}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash-lite}
     volumes:
       - .:/app
       # Evitamos que los node_modules locales sobrescriban los del contenedor
       - /app/node_modules
     working_dir: /app
     # Instalamos dependencias y corremos con nodemon + tsx para auto-recarga en TS
-    command: bash -c "pnpm install && npx nodemon --watch src --ext ts --exec 'node --import tsx' src/index.ts"
+    command: bash -c "pnpm install --frozen-lockfile --config.minimum-release-age=0 && pnpm exec nodemon --watch src --ext ts --exec 'node --import tsx' src/index.ts"
     depends_on:
       - mongodb
 
