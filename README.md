@@ -58,6 +58,53 @@ El proyecto utiliza Docker para facilitar el despliegue del entorno de desarroll
 
 La API estará disponible en [http://localhost:3000](http://localhost:3000).
 
+### Sincronización de Documentos
+
+El endpoint principal es:
+
+```text
+POST /api/documents
+```
+
+Cada documento enviado debe incluir:
+
+```json
+{
+  "id": "GUID-O-ID-UNICO-DE-LA-VERSION",
+  "documentCode": "CODIGO-UNICO-DEL-DOCUMENTO",
+  "title": "Titulo del documento",
+  "description": "Descripcion",
+  "metadata": {
+    "category": "document",
+    "fullText": "Texto completo extraido del documento"
+  }
+}
+```
+
+El campo `documentCode` es obligatorio. Tambien se aceptan los alias `DocumentCode`, `codigo`, `Codigo`, `code` o `Code`.
+
+Cuando llega un documento nuevo:
+
+1.  La API busca documentos existentes con el mismo `documentCode`.
+2.  Todos esos documentos anteriores se marcan como obsoletos:
+    ```json
+    {
+      "isLatest": false,
+      "lifecycleStatus": "obsolete",
+      "obsoleteAt": "...",
+      "supersededById": "ID-DEL-DOCUMENTO-NUEVO"
+    }
+    ```
+3.  El documento recien recibido se guarda como:
+    ```json
+    {
+      "isLatest": true,
+      "lifecycleStatus": "active"
+    }
+    ```
+
+La búsqueda en `GET /api/documents/search` solo devuelve documentos con `isLatest: true`.
+
 ### Verificación
 
 Después de ejecutar el setup, prueba:

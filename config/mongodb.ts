@@ -28,6 +28,7 @@ export async function getDocumentsCollection(): Promise<Collection> {
 async function ensureIndexes(db: Db): Promise<void> {
     const documents = db.collection('documents');
     await documents.createIndex({ id: 1 }, { unique: true });
+    await documents.createIndex({ documentCode: 1, isLatest: 1 });
     await documents.createIndex({ 'metadata.tags': 1 });
 }
 

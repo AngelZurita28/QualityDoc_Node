@@ -26,6 +26,7 @@ const __dirname = pathModule.dirname(fileURLToPath(import.meta.url));
 const API_URL = 'http://localhost:3000/api/documents';
 const FILE_PATH = process.env.TEST_FILE_PATH || pathModule.join(__dirname, 'document.docx'); // ← Cambia la ruta al archivo que quieras probar
 const DOCUMENT_ID = process.env.TEST_DOCUMENT_ID || crypto.randomUUID().toUpperCase();           // ← O pon un ID fijo: 'MI-DOC-001'
+const DOCUMENT_CODE = process.env.TEST_DOCUMENT_CODE || 'DOC-TEST-001';
 const DOC_TITLE = process.env.TEST_DOC_TITLE || 'Documento de prueba ISO 27001';
 const DOC_DESCRIPTION = process.env.TEST_DOC_DESCRIPTION || 'Manual de seguridad de la información para la planta industrial';
 
@@ -278,6 +279,7 @@ async function run() {
     // 4. Armar el JSON igual a como lo mandaría .NET
     const payload = {
         id: DOCUMENT_ID,
+        documentCode: DOCUMENT_CODE,
         title: DOC_TITLE,
         description: DOC_DESCRIPTION,
         filePath: `/uploads/${fileName}`,

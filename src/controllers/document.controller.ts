@@ -52,6 +52,22 @@ function extractFallbackTagsFromDocument(documentData: any): string[] {
     return [...new Set(words)];
 }
 
+function getDocumentCode(data: any): string | null {
+    const rawCode = data.documentCode
+        ?? data.DocumentCode
+        ?? data.codigo
+        ?? data.Codigo
+        ?? data.code
+        ?? data.Code
+        ?? data.document?.code
+        ?? data.Document?.Code;
+
+    if (rawCode === undefined || rawCode === null) return null;
+
+    const code = String(rawCode).trim();
+    return code.length > 0 ? code : null;
+}
+
 /**
  * Genera etiquetas usando Gemini AI
  */
@@ -217,6 +233,15 @@ export const syncDocument = async (req: Request, res: Response): Promise<void> =
 
         const title = data.title || data.Title || '';
         const description = data.description || data.Description || '';
+        const documentCode = getDocumentCode(data);
+
+        if (!documentCode) {
+            res.status(400).json({
+                status: 'error',
+                message: 'El código de documento es obligatorio. Envía "documentCode", "codigo" o "code".',
+            });
+            return;
+        }
 
         if (!title) {
             res.status(400).json({
@@ -226,7 +251,7 @@ export const syncDocument = async (req: Request, res: Response): Promise<void> =
             return;
         }
 
-        console.log(`📄 Recibido documento ID: ${docId} — "${title}"`);
+        console.log(`📄 Recibido documento ID: ${docId} — Código: ${documentCode} — "${title}"`);
 
         // ── 3. Verificar que el ID no exista ya en MongoDB ──
         const documents = await getDocumentsCollection();
@@ -274,6 +299,7 @@ export const syncDocument = async (req: Request, res: Response): Promise<void> =
         // ── 6. Armar documento final ──
         const documentToSave: any = {
             id: String(docId),
+            documentCode,
             title,
             description,
             filePath: data.filePath || data.FilePath || null,
@@ -282,7 +308,8 @@ export const syncDocument = async (req: Request, res: Response): Promise<void> =
             companyId: data.companyId || data.CompanyId || null,
             parentId: data.parentId || data.ParentId || null,
             versionNumber: Number(data.versionNumber || data.VersionNumber || 1),
-            isLatest: data.isLatest !== undefined ? Boolean(data.isLatest) : (data.IsLatest !== undefined ? Boolean(data.IsLatest) : true),
+            isLatest: true,
+            lifecycleStatus: 'active',
             metadata: {
                 ...universalMeta,
                 category,
@@ -305,18 +332,37 @@ export const syncDocument = async (req: Request, res: Response): Promise<void> =
         const allTags = [...new Set([...existingTags, ...iaTags, ...fallbackTags])].slice(0, 30);
         documentToSave.metadata.tags = allTags;
 
-        // ── 8. Guardar en MongoDB con timeout de seguridad ──
+        // ── 8. Marcar versiones anteriores con el mismo código como obsoletas ──
+        const obsoleteResult = await withTimeout(
+            documents.updateMany(
+                { documentCode, id: { $ne: String(docId) } },
+                {
+                    $set: {
+                        isLatest: false,
+                        lifecycleStatus: 'obsolete',
+                        obsoleteAt: new Date().toISOString(),
+                        supersededById: String(docId),
+                    },
+                }
+            ),
+            15000,
+            'MongoDB obsolete previous versions'
+        );
+
+        // ── 9. Guardar en MongoDB con timeout de seguridad ──
         await withTimeout(documents.insertOne(documentToSave), 15000, 'MongoDB write');
 
         const elapsed = Date.now() - startTime;
-        console.log(`✅ Documento sincronizado en ${elapsed}ms — Tags: ${allTags.length}`);
+        console.log(`✅ Documento sincronizado en ${elapsed}ms — Código: ${documentCode} — Obsoletos: ${obsoleteResult.modifiedCount} — Tags: ${allTags.length}`);
 
         res.status(200).json({
             status: 'success',
             message: 'Documento sincronizado exitosamente.',
             data: {
                 id: String(docId),
+                documentCode,
                 category,
+                obsoleteDocuments: obsoleteResult.modifiedCount,
                 tagsGenerated: allTags.length,
                 warnings: warnings.length > 0 ? warnings : undefined,
                 metadata: documentToSave.metadata,
@@ -389,7 +435,7 @@ export const searchDocuments = async (req: Request, res: Response): Promise<void
         // 3. Buscar en MongoDB los documentos que contengan AL MENOS UNA de las etiquetas
         const documents = await getDocumentsCollection();
         const docs = await withTimeout<any[]>(
-            documents.find({ 'metadata.tags': { $in: mongoTags } }).toArray(),
+            documents.find({ 'metadata.tags': { $in: mongoTags }, isLatest: true }).toArray(),
             15000, 'MongoDB search'
         );
 
