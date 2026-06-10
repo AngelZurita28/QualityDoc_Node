@@ -1,6 +1,11 @@
 # dependencies (bun install)
 node_modules
 
+
+.pnpm-store
+bun.lock
+pnpm-lock.yaml
+
 # output
 out
 dist
