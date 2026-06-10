@@ -55,7 +55,7 @@ cat <<EOF > .env
 MONGO_USER=$mongoUser
 MONGO_PASS=$mongoPasswordPlain
 GEMINI_API_KEY=$geminiKey
-GEMINI_MODEL=gemini-2.5-flash-lite
+GEMINI_MODEL=gemini-3.1-flash-lite
 PORT=3000
 HOST=0.0.0.0
 JSON_BODY_LIMIT=15mb
@@ -73,9 +73,16 @@ $DOCKER_COMPOSE_CMD up -d --build || exit 1
 echo -e "\n${CYAN}Verificando API en http://localhost:3000...${NC}"
 apiReady=false
 for i in {1..30}; do
-    if curl -fsS http://localhost:3000/api/saludo > /dev/null 2>&1; then
-        apiReady=true
-        break
+    if command -v curl >/dev/null 2>&1; then
+        if curl -fsS http://localhost:3000/api/saludo > /dev/null 2>&1; then
+            apiReady=true
+            break
+        fi
+    else
+        if wget -qO- http://localhost:3000/api/saludo > /dev/null 2>&1; then
+            apiReady=true
+            break
+        fi
     fi
     sleep 2
 done
