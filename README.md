@@ -41,10 +41,10 @@ El proyecto utiliza Docker para facilitar el despliegue del entorno de desarroll
     MONGO_DB=QualityDocDB
     ```
 2.  Levanta un contenedor de **MongoDB** con persistencia de datos.
-3.  Levanta el contenedor de la **API (Node.js)** en modo `network_mode: host`.
-    *   Esto permite que la API sea accesible desde tu red local mediante tu dirección IP.
-    *   La API se conecta a MongoDB a través de `127.0.0.1:27017`.
-    *   El backend construye internamente la URI de MongoDB usando `MONGO_USER`, `MONGO_PASS` y `MONGO_DB`.
+3.  Levanta el contenedor de la **API (Node.js)** y publica el puerto `3000`.
+    *   La API queda accesible desde el host en `http://localhost:3000`.
+    *   Dentro de Docker, la API se conecta a MongoDB usando el host de servicio `mongodb:27017`.
+    *   El backend construye internamente la URI de MongoDB usando `MONGO_USER`, `MONGO_PASS`, `MONGO_DB`, `MONGO_HOST` y `MONGO_PORT`.
 4.  Instala las dependencias necesarias mediante `pnpm` automáticamente dentro del contenedor.
 5.  Inicia el servidor en modo desarrollo con auto-recarga.
 6.  Verifica que la API responda en `http://localhost:3000/api/saludo`.

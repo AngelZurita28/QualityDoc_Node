@@ -50,10 +50,12 @@ function getDatabaseNameFromUri(uri: string): string | null {
 function buildMongoUri(dbName: string): string {
     const user = process.env.MONGO_USER;
     const pass = process.env.MONGO_PASS;
+    const host = process.env.MONGO_HOST || '127.0.0.1';
+    const port = process.env.MONGO_PORT || '27017';
 
     if (user && pass) {
-        return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@127.0.0.1:27017/${dbName}?authSource=admin`;
+        return `mongodb://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${dbName}?authSource=admin`;
     }
 
-    return `mongodb://127.0.0.1:27017/${dbName}`;
+    return `mongodb://${host}:${port}/${dbName}`;
 }
