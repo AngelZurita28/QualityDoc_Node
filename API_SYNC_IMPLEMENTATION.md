@@ -282,13 +282,39 @@ El documento nuevo queda asi:
 GET http://localhost:3000/api/documents/search?q=manual%20calidad
 ```
 
-La busqueda solo devuelve documentos vigentes:
+La busqueda solo devuelve documentos vigentes y en formato resumido para vistas de lista. No incluye `metadata.fullText` ni metadata especifica completa:
 
 ```json
 {
-  "isLatest": true
+  "status": "success",
+  "data": [
+    {
+      "id": "DOC-V2-001",
+      "documentCode": "DOC-001",
+      "title": "Documento de prueba",
+      "description": "Documento enviado desde prueba curl",
+      "isLatest": true,
+      "metadata": {
+        "category": "document",
+        "mimeType": "text/plain",
+        "extension": ".txt",
+        "fileSize": "10KB",
+        "tags": ["documento", "prueba"]
+      },
+      "_matchCount": 2
+    }
+  ],
+  "searchTags": ["manual", "calidad"]
 }
 ```
+
+## Detalle de Documento
+
+```http
+GET http://localhost:3000/api/documents/DOC-V2-001
+```
+
+Devuelve el documento completo guardado en MongoDB, incluyendo `metadata.fullText`, `metadata.specific`, tags y campos de ciclo de vida.
 
 ## Prueba Rapida
 
@@ -315,4 +341,10 @@ Verificar busqueda:
 
 ```bash
 curl "http://localhost:3000/api/documents/search?q=documento%20prueba"
+```
+
+Verificar detalle completo:
+
+```bash
+curl "http://localhost:3000/api/documents/DOC-V2-001"
 ```

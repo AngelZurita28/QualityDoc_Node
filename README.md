@@ -104,7 +104,11 @@ Cuando llega un documento nuevo:
     }
     ```
 
-La búsqueda en `GET /api/documents/search` solo devuelve documentos con `isLatest: true`.
+La búsqueda en `GET /api/documents/search` solo devuelve documentos con `isLatest: true` y campos resumidos para vistas de lista. Para obtener el JSON completo de un documento, usa:
+
+```text
+GET /api/documents/{id}
+```
 
 ### Verificación
 
@@ -114,6 +118,7 @@ Después de ejecutar el setup, prueba:
 curl http://localhost:3000/api/saludo
 curl http://localhost:3000/api/test-db
 curl "http://localhost:3000/api/documents/search?q=hola%20mundo"
+curl "http://localhost:3000/api/documents/DOC-V2-001"
 ```
 
 La búsqueda de `hola mundo` debe responder al menos con:

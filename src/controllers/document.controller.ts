@@ -150,7 +150,7 @@ function validateUniversalMeta(meta: any): ValidationResult {
     if (meta.createdOnDisk) cleaned.createdOnDisk = String(meta.createdOnDisk);
     if (meta.modifiedOnDisk) cleaned.modifiedOnDisk = String(meta.modifiedOnDisk);
 
-    const fullText = meta.fullText ?? meta.content ?? meta.textContent ?? meta.extractedText ?? meta.documentText;
+    const fullText = meta.fullText ?? meta.texto ?? meta.content ?? meta.textContent ?? meta.extractedText ?? meta.documentText;
     if (fullText !== undefined && fullText !== null) {
         cleaned.fullText = String(fullText);
     }
@@ -200,6 +200,104 @@ function validateCadMeta(specific: any): any {
     if (specific.softwareVersion) cleaned.softwareVersion = String(specific.softwareVersion);
     if (Array.isArray(specific.layers)) cleaned.layers = specific.layers.map(String);
     return cleaned;
+}
+
+function buildDocumentListItem(doc: any, matchCount: number): any {
+    return {
+        id: doc.id,
+        documentCode: doc.documentCode,
+        title: doc.title,
+        description: doc.description,
+        filePath: doc.filePath,
+        authorId: doc.authorId,
+        statusId: doc.statusId,
+        companyId: doc.companyId,
+        parentId: doc.parentId,
+        versionNumber: doc.versionNumber,
+        isLatest: doc.isLatest,
+        lifecycleStatus: doc.lifecycleStatus,
+        syncedAt: doc.syncedAt,
+        metadata: {
+            category: doc.metadata?.category,
+            mimeType: doc.metadata?.mimeType,
+            extension: doc.metadata?.extension,
+            fileSize: doc.metadata?.fileSize,
+            tags: doc.metadata?.tags || [],
+        },
+        _matchCount: matchCount,
+    };
+}
+
+function serializeFullDocument(doc: any): any {
+    return {
+        ...doc,
+        _id: doc._id?.toString(),
+    };
+}
+
+function normalizeSearchText(value: unknown): string {
+    return String(value)
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+}
+
+function buildSearchTags(query: string): string[] {
+    const cleanedQuery = normalizeSearchText(query).replace(/[^\w\s]/g, '');
+    const words = cleanedQuery
+        .split(/\s+/)
+        .filter(word => word.length > 0 && !STOP_WORDS.has(word));
+
+    return [...new Set(words)].slice(0, 30);
+}
+
+function flattenDocumentValues(value: any, path = ''): Array<{ path: string; value: string }> {
+    if (value === undefined || value === null) return [];
+
+    if (value instanceof Date) {
+        return [{ path, value: value.toISOString() }];
+    }
+
+    if (typeof value !== 'object') {
+        return [{ path, value: String(value) }];
+    }
+
+    if (typeof value.toHexString === 'function') {
+        return [{ path, value: value.toHexString() }];
+    }
+
+    if (Array.isArray(value)) {
+        return value.flatMap((item, index) => flattenDocumentValues(item, `${path}[${index}]`));
+    }
+
+    return Object.entries(value).flatMap(([key, item]) => {
+        const childPath = path ? `${path}.${key}` : key;
+        return flattenDocumentValues(item, childPath);
+    });
+}
+
+function getDeepSearchMatch(doc: any, searchTags: string[]): { matchCount: number; matchedFields: string[] } {
+    const values = flattenDocumentValues(serializeFullDocument(doc));
+    const matchedFields = new Set<string>();
+    let matchCount = 0;
+
+    for (const tag of searchTags) {
+        let tagMatched = false;
+
+        for (const item of values) {
+            if (normalizeSearchText(item.value).includes(tag)) {
+                matchedFields.add(item.path);
+                tagMatched = true;
+            }
+        }
+
+        if (tagMatched) matchCount++;
+    }
+
+    return {
+        matchCount,
+        matchedFields: Array.from(matchedFields).slice(0, 20),
+    };
 }
 
 // ═══════════════════════════════════════════
@@ -382,6 +480,114 @@ export const syncDocument = async (req: Request, res: Response): Promise<void> =
 };
 
 // ═══════════════════════════════════════════
+// CONTROLADOR: getDocumentById (GET /api/documents/:id)
+// Devuelve el documento completo guardado en MongoDB
+// ═══════════════════════════════════════════
+
+export const getDocumentById = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const id = String(req.params.id || '').trim();
+
+        if (!id) {
+            res.status(400).json({
+                status: 'error',
+                message: 'Se requiere el parámetro "id".'
+            });
+            return;
+        }
+
+        const documents = await getDocumentsCollection();
+        const doc = await withTimeout<any>(
+            documents.findOne({ id }),
+            15000,
+            'MongoDB document detail'
+        );
+
+        if (!doc) {
+            res.status(404).json({
+                status: 'error',
+                message: `No se encontró el documento con ID "${id}".`
+            });
+            return;
+        }
+
+        res.status(200).json({
+            status: 'success',
+            data: serializeFullDocument(doc)
+        });
+    } catch (error: any) {
+        console.error('Error obteniendo detalle de documento:', error.message);
+        res.status(500).json({
+            status: 'error',
+            message: 'Error al obtener el detalle del documento',
+            error: error.message
+        });
+    }
+};
+
+// ═══════════════════════════════════════════
+// CONTROLADOR: deepSearchDocuments (GET /api/documents/deepsearch)
+// Busca en todos los campos del JSON guardado en MongoDB
+// ═══════════════════════════════════════════
+
+export const deepSearchDocuments = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const query = req.query.q as string;
+
+        if (!query) {
+            res.status(400).json({
+                status: 'error',
+                message: 'Se requiere el parámetro de búsqueda "q".'
+            });
+            return;
+        }
+
+        const searchTags = buildSearchTags(query);
+
+        if (searchTags.length === 0) {
+            res.status(200).json({
+                status: 'success',
+                message: 'La búsqueda no contiene palabras clave válidas.',
+                data: []
+            });
+            return;
+        }
+
+        const documents = await getDocumentsCollection();
+        const docs = await withTimeout<any[]>(
+            documents.find({ isLatest: true }).toArray(),
+            15000,
+            'MongoDB deep search read'
+        );
+
+        const results = docs
+            .map((doc: any) => {
+                const { matchCount, matchedFields } = getDeepSearchMatch(doc, searchTags);
+                return {
+                    ...buildDocumentListItem(doc, matchCount),
+                    _matchedFields: matchedFields,
+                };
+            })
+            .filter((doc: any) => doc._matchCount > 0)
+            .sort((a: any, b: any) => b._matchCount - a._matchCount);
+
+        res.status(200).json({
+            status: 'success',
+            data: results,
+            searchTags,
+            searchMode: 'deep'
+        });
+    } catch (error: any) {
+        console.error('Error realizando deepsearch:', error.message);
+        res.status(500).json({
+            status: 'error',
+            message: 'Error al realizar la búsqueda profunda en MongoDB',
+            error: error.message
+        });
+    }
+};
+
+// ═══════════════════════════════════════════
 // CONTROLADOR: searchDocuments (GET /api/documents/search)
 // ═══════════════════════════════════════════
 
@@ -412,14 +618,7 @@ export const searchDocuments = async (req: Request, res: Response): Promise<void
             return;
         }
 
-        // 1. Limpiar la frase: quitar signos de puntuación, pasar a minúsculas y REMOVER ACENTOS
-        const cleanedQuery = query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\s]/g, '');
-
-        // 2. Dividir en palabras y filtrar conectores (stop words)
-        const words = cleanedQuery.split(/\s+/).filter(word => word.length > 0 && !STOP_WORDS.has(word));
-
-        // Eliminar palabras duplicadas en la búsqueda
-        const searchTags = [...new Set(words)];
+        const searchTags = buildSearchTags(query);
 
         if (searchTags.length === 0) {
             res.status(200).json({
@@ -448,12 +647,10 @@ export const searchDocuments = async (req: Request, res: Response): Promise<void
             return;
         }
 
-        // 4. Calcular el nivel de coincidencia (cuántos tags buscados están presentes en el documento)
+        // 4. Calcular el nivel de coincidencia y devolver solo datos útiles para listado
         const results = docs.map((doc: any) => {
-            const { _id, ...data } = doc;
-            const docTags = data.metadata?.tags || [];
+            const docTags = doc.metadata?.tags || [];
 
-            // Contar cuántas palabras clave de la búsqueda están en los tags del documento
             let matchCount = 0;
             for (const tag of mongoTags) {
                 if (docTags.includes(tag)) {
@@ -461,18 +658,11 @@ export const searchDocuments = async (req: Request, res: Response): Promise<void
                 }
             }
 
-            return {
-                id: doc.id,
-                ...data,
-                _matchCount: matchCount // Campo temporal para ordenar
-            };
+            return buildDocumentListItem(doc, matchCount);
         });
 
         // 5. Ordenar los resultados: mayor coincidencia primero
         results.sort((a: any, b: any) => b._matchCount - a._matchCount);
-
-        // Opcional: remover el campo _matchCount antes de enviar si no lo necesitas, 
-        // pero es útil para el frontend para mostrar relevancia.
 
         res.status(200).json({
             status: 'success',
