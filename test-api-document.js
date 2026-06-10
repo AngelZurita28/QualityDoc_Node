@@ -10,19 +10,24 @@
  *  CONFIGURACIÓN: Edita las variables en la sección de abajo ↓
  */
 
-const fs = require('fs');
-const crypto = require('crypto');
-const pathModule = require('path');
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
+import crypto from 'crypto';
+import pathModule from 'path';
+
+const require = createRequire(import.meta.url);
+const __dirname = pathModule.dirname(fileURLToPath(import.meta.url));
 
 // ╔═══════════════════════════════════════╗
 // ║      EDITAR AQUÍ PARA PROBAR         ║
 // ╚═══════════════════════════════════════╝
 
 const API_URL = 'http://localhost:3000/api/documents';
-const FILE_PATH = pathModule.join(__dirname, 'document.docx'); // ← Cambia la ruta al archivo que quieras probar
-const DOCUMENT_ID = crypto.randomUUID().toUpperCase();           // ← O pon un ID fijo: 'MI-DOC-001'
-const DOC_TITLE = 'Documento de prueba ISO 27001';
-const DOC_DESCRIPTION = 'Manual de seguridad de la información para la planta industrial';
+const FILE_PATH = process.env.TEST_FILE_PATH || pathModule.join(__dirname, 'document.docx'); // ← Cambia la ruta al archivo que quieras probar
+const DOCUMENT_ID = process.env.TEST_DOCUMENT_ID || crypto.randomUUID().toUpperCase();           // ← O pon un ID fijo: 'MI-DOC-001'
+const DOC_TITLE = process.env.TEST_DOC_TITLE || 'Documento de prueba ISO 27001';
+const DOC_DESCRIPTION = process.env.TEST_DOC_DESCRIPTION || 'Manual de seguridad de la información para la planta industrial';
 
 // ═══════════════════════════════════════════════════════════════
 
@@ -42,6 +47,8 @@ const MIME_MAP = {
     '.svg': 'image/svg+xml',
     '.dwg': 'application/acad',
     '.dxf': 'application/dxf',
+    '.txt': 'text/plain',
+    '.md': 'text/markdown',
 };
 
 function formatSize(bytes) {
@@ -51,7 +58,7 @@ function formatSize(bytes) {
 }
 
 function detectCategory(ext) {
-    if (['.pdf', '.docx', '.doc', '.xlsx', '.xls'].includes(ext)) return 'document';
+    if (['.pdf', '.docx', '.doc', '.xlsx', '.xls', '.txt', '.md'].includes(ext)) return 'document';
     if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.tiff', '.tif', '.bmp', '.svg'].includes(ext)) return 'image';
     if (['.dwg', '.dxf'].includes(ext)) return 'cad';
     return 'other';
@@ -72,6 +79,17 @@ async function extractPdfSpecific(buffer) {
     } catch (e) {
         console.warn('  ⚠️ No se pudo extraer metadatos PDF:', e.message);
         return { authorOriginal: null, pageCount: null, hasImages: null, language: null };
+    }
+}
+
+async function extractPdfFullText(buffer) {
+    try {
+        const pdfParse = require('pdf-parse');
+        const data = await pdfParse(buffer);
+        return data.text || '';
+    } catch (e) {
+        console.warn('  ⚠️ No se pudo extraer texto PDF:', e.message);
+        return '';
     }
 }
 
@@ -99,6 +117,27 @@ async function extractDocxSpecific(buffer) {
     } catch (e) {
         console.warn('  ⚠️ No se pudo extraer metadatos DOCX:', e.message);
         return { authorOriginal: null, pageCount: null, hasImages: null, language: null };
+    }
+}
+
+async function extractDocxFullText(buffer) {
+    try {
+        const JSZip = require('jszip');
+        const zip = await new JSZip().loadAsync(buffer);
+        const documentFile = zip.file('word/document.xml');
+        if (!documentFile) return '';
+
+        const xml = await documentFile.async('text');
+        return xml
+            .replace(/<w:tab\/>/g, ' ')
+            .replace(/<\/w:p>/g, '\n')
+            .replace(/<[^>]+>/g, '')
+            .replace(/\s+\n/g, '\n')
+            .replace(/[ \t]+/g, ' ')
+            .trim();
+    } catch (e) {
+        console.warn('  ⚠️ No se pudo extraer texto DOCX:', e.message);
+        return '';
     }
 }
 
@@ -216,9 +255,17 @@ async function run() {
 
     // Metadatos específicos según categoría
     let specificMeta = {};
+    let fullText = '';
     if (category === 'document') {
-        if (ext === '.pdf') specificMeta = await extractPdfSpecific(fileBuffer);
-        else if (ext === '.docx') specificMeta = await extractDocxSpecific(fileBuffer);
+        if (ext === '.pdf') {
+            specificMeta = await extractPdfSpecific(fileBuffer);
+            fullText = await extractPdfFullText(fileBuffer);
+        } else if (ext === '.docx') {
+            specificMeta = await extractDocxSpecific(fileBuffer);
+            fullText = await extractDocxFullText(fileBuffer);
+        } else if (['.txt', '.md'].includes(ext)) {
+            fullText = fileBuffer.toString('utf-8');
+        }
     } else if (category === 'image') {
         specificMeta = await extractImageSpecific(fileBuffer);
     } else if (category === 'cad') {
@@ -251,6 +298,7 @@ async function run() {
             modifiedOnDisk: stats.mtime.toISOString(),
             category: category,
             specific: specificMeta,
+            fullText,
         },
     };
 

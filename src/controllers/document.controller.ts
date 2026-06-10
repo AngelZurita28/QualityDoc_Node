@@ -1,8 +1,9 @@
 import { type Request, type Response } from 'express';
-import { db } from '../../config/firebase';
+import { getDocumentsCollection } from '../../config/mongodb';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 
 // ─── Utilidades ───
 
@@ -26,40 +27,65 @@ function normalizeTags(tags: string[]): string[] {
     return Array.from(processed);
 }
 
+function extractFallbackTagsFromDocument(documentData: any): string[] {
+    const searchableParts = [
+        documentData.title,
+        documentData.description,
+        documentData.filePath,
+        documentData.metadata?.category,
+        documentData.metadata?.mimeType,
+        documentData.metadata?.extension,
+        documentData.metadata?.fullText,
+        documentData.metadata?.specific ? JSON.stringify(documentData.metadata.specific) : '',
+    ];
+
+    const text = searchableParts.join(' ')
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^\w\s]/g, " ");
+
+    const words = text
+        .split(/\s+/)
+        .filter(word => word.length > 2 && !STOP_WORDS.has(word) && !/^\d+$/.test(word));
+
+    return [...new Set(words)];
+}
+
 /**
  * Genera etiquetas usando Gemini AI
  */
-async function generarEtiquetasIA(titulo: string, descripcion: string): Promise<string[]> {
+async function generarEtiquetasIA(documentData: any): Promise<string[]> {
     if (!process.env.GEMINI_API_KEY) {
         console.warn('GEMINI_API_KEY no configurada. Saltando generación de etiquetas por IA.');
         return [];
     }
-    if (!titulo && !descripcion) return [];
 
     try {
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+        const model = genAI.getGenerativeModel({ model: geminiModel });
         const prompt = `
 Eres un sistema experto en clasificación de documentos.
-Analiza el siguiente título y descripción de un documento y genera una extensa lista de AL MENOS 15 a 20 etiquetas (tags) clave.
+Analiza el siguiente JSON completo de un documento y genera exactamente 30 etiquetas (tags) clave.
 
 REGLAS ESTRICTAS:
-1. Extrae las palabras más importantes del título y descripción.
+1. Extrae las palabras más importantes del título, descripción, metadatos y texto completo del documento si está presente.
 2. INCLUYE SINÓNIMOS Y TÉRMINOS RELACIONADOS. Por ejemplo, si el texto menciona "informática", debes incluir también términos como "tics", "tecnologia", "informacion", "computacion".
 3. Cada etiqueta debe ser UNA SOLA PALABRA (sin espacios, sin guiones). Si una idea tiene varias palabras (ej. "seguridad informática"), sepárala en palabras individuales ("seguridad", "informatica").
 4. No uses acentos ni tildes.
 5. Si incluye cosas como "iso 27001", incluye "iso" y "27001" como etiquetas separadas y "iso27001" como una sola palabra.
 6. Devuelve ÚNICAMENTE un array en formato JSON con las etiquetas como strings, sin formato markdown ni texto adicional.
+7. El array debe contener 30 strings, sin duplicados.
 Ejemplo: ["calidad", "procesos", "manual", "auditoria", "seguridad", "informatica", "tics", "tecnologia", "informacion", "computacion", "planta", "operacion", "gestion", "riesgos", "iso", "27001", "iso27001"]
 
-Título: ${titulo}
-Descripción: ${descripcion}
+JSON del documento:
+${JSON.stringify(documentData)}
         `;
 
-        const result = await withTimeout(model.generateContent(prompt), 20000, 'Gemini API');
+        const result = await withTimeout(model.generateContent(prompt), 30000, 'Gemini API');
         const text = result.response.text();
         const jsonText = text.replace(/```json/gi, '').replace(/```/gi, '').trim();
         const tags = JSON.parse(jsonText);
-        return Array.isArray(tags) ? normalizeTags(tags) : [];
+        return Array.isArray(tags) ? normalizeTags(tags).slice(0, 30) : [];
     } catch (error) {
         console.error('Error al generar etiquetas con IA:', error);
         return [];
@@ -107,6 +133,11 @@ function validateUniversalMeta(meta: any): ValidationResult {
     // Fechas de disco
     if (meta.createdOnDisk) cleaned.createdOnDisk = String(meta.createdOnDisk);
     if (meta.modifiedOnDisk) cleaned.modifiedOnDisk = String(meta.modifiedOnDisk);
+
+    const fullText = meta.fullText ?? meta.content ?? meta.textContent ?? meta.extractedText ?? meta.documentText;
+    if (fullText !== undefined && fullText !== null) {
+        cleaned.fullText = String(fullText);
+    }
 
     // Tags previos
     if (Array.isArray(meta.tags)) {
@@ -179,7 +210,7 @@ export const syncDocument = async (req: Request, res: Response): Promise<void> =
         if (!docId) {
             res.status(400).json({
                 status: 'error',
-                message: 'El campo "id" es obligatorio para sincronizar con Firestore.',
+                message: 'El campo "id" es obligatorio para sincronizar con MongoDB.',
             });
             return;
         }
@@ -197,15 +228,15 @@ export const syncDocument = async (req: Request, res: Response): Promise<void> =
 
         console.log(`📄 Recibido documento ID: ${docId} — "${title}"`);
 
-        // ── 3. Verificar que el ID no exista ya en Firestore ──
-        const docRef = db.collection('documents').doc(String(docId));
-        const existingDoc = await withTimeout(docRef.get(), 10000, 'Firestore read');
-        if (existingDoc.exists) {
+        // ── 3. Verificar que el ID no exista ya en MongoDB ──
+        const documents = await getDocumentsCollection();
+        const existingDoc = await withTimeout(documents.findOne({ id: String(docId) }), 10000, 'MongoDB read');
+        if (existingDoc) {
             const elapsed = Date.now() - startTime;
-            console.warn(`⚠️ Documento ID ${docId} ya existe en Firestore. Rechazado.`);
+            console.warn(`⚠️ Documento ID ${docId} ya existe en MongoDB. Rechazado.`);
             res.status(409).json({
                 status: 'error',
-                message: `El documento con ID "${docId}" ya existe en Firestore. No se permite duplicar.`,
+                message: `El documento con ID "${docId}" ya existe en MongoDB. No se permite duplicar.`,
                 processingTimeMs: elapsed,
             });
             return;
@@ -240,17 +271,6 @@ export const syncDocument = async (req: Request, res: Response): Promise<void> =
             }
         }
 
-        // ── 5. Generar tags con IA (no bloquea si falla) ──
-        let iaTags: string[] = [];
-        try {
-            iaTags = await generarEtiquetasIA(title, description);
-        } catch (e: any) {
-            console.warn('⚠️ Generación de tags IA falló, continuando:', e.message);
-        }
-
-        const existingTags = Array.isArray(universalMeta.tags) ? normalizeTags(universalMeta.tags) : [];
-        const allTags = [...new Set([...existingTags, ...iaTags])];
-
         // ── 6. Armar documento final ──
         const documentToSave: any = {
             id: String(docId),
@@ -267,13 +287,26 @@ export const syncDocument = async (req: Request, res: Response): Promise<void> =
                 ...universalMeta,
                 category,
                 specific: specificMeta,
-                tags: allTags,
+                tags: Array.isArray(universalMeta.tags) ? normalizeTags(universalMeta.tags) : [],
             },
             syncedAt: new Date().toISOString(),
         };
 
-        // ── 8. Guardar en Firestore con timeout de seguridad ──
-        await withTimeout(docRef.set(documentToSave), 15000, 'Firestore write');
+        // ── 7. Generar tags con IA usando el JSON completo del documento ──
+        let iaTags: string[] = [];
+        try {
+            iaTags = await generarEtiquetasIA(documentToSave);
+        } catch (e: any) {
+            console.warn('⚠️ Generación de tags IA falló, continuando:', e.message);
+        }
+
+        const existingTags = Array.isArray(universalMeta.tags) ? normalizeTags(universalMeta.tags) : [];
+        const fallbackTags = extractFallbackTagsFromDocument(documentToSave);
+        const allTags = [...new Set([...existingTags, ...iaTags, ...fallbackTags])].slice(0, 30);
+        documentToSave.metadata.tags = allTags;
+
+        // ── 8. Guardar en MongoDB con timeout de seguridad ──
+        await withTimeout(documents.insertOne(documentToSave), 15000, 'MongoDB write');
 
         const elapsed = Date.now() - startTime;
         console.log(`✅ Documento sincronizado en ${elapsed}ms — Tags: ${allTags.length}`);
@@ -351,33 +384,32 @@ export const searchDocuments = async (req: Request, res: Response): Promise<void
             return;
         }
 
-        // Firestore 'array-contains-any' soporta un máximo de 10 elementos.
-        // Si hay más de 10 palabras clave, tomamos solo las primeras 10.
-        const firestoreTags = searchTags.slice(0, 10);
+        const mongoTags = searchTags.slice(0, 30);
 
-        // 3. Buscar en Firestore los documentos que contengan AL MENOS UNA de las etiquetas
-        const snapshot = await withTimeout(
-            db.collection('documents').where('metadata.tags', 'array-contains-any', firestoreTags).get(),
-            15000, 'Firestore search'
+        // 3. Buscar en MongoDB los documentos que contengan AL MENOS UNA de las etiquetas
+        const documents = await getDocumentsCollection();
+        const docs = await withTimeout<any[]>(
+            documents.find({ 'metadata.tags': { $in: mongoTags } }).toArray(),
+            15000, 'MongoDB search'
         );
 
-        if (snapshot.empty) {
+        if (docs.length === 0) {
             res.status(200).json({
                 status: 'success',
                 data: [],
-                searchTags: firestoreTags
+                searchTags: mongoTags
             });
             return;
         }
 
         // 4. Calcular el nivel de coincidencia (cuántos tags buscados están presentes en el documento)
-        const results = snapshot.docs.map(doc => {
-            const data = doc.data();
+        const results = docs.map((doc: any) => {
+            const { _id, ...data } = doc;
             const docTags = data.metadata?.tags || [];
 
             // Contar cuántas palabras clave de la búsqueda están en los tags del documento
             let matchCount = 0;
-            for (const tag of firestoreTags) {
+            for (const tag of mongoTags) {
                 if (docTags.includes(tag)) {
                     matchCount++;
                 }
@@ -391,7 +423,7 @@ export const searchDocuments = async (req: Request, res: Response): Promise<void
         });
 
         // 5. Ordenar los resultados: mayor coincidencia primero
-        results.sort((a, b) => b._matchCount - a._matchCount);
+        results.sort((a: any, b: any) => b._matchCount - a._matchCount);
 
         // Opcional: remover el campo _matchCount antes de enviar si no lo necesitas, 
         // pero es útil para el frontend para mostrar relevancia.
@@ -399,13 +431,13 @@ export const searchDocuments = async (req: Request, res: Response): Promise<void
         res.status(200).json({
             status: 'success',
             data: results,
-            searchTags: firestoreTags
+            searchTags: mongoTags
         });
     } catch (error: any) {
         console.error('Error buscando documentos:', error.message);
         res.status(500).json({
             status: 'error',
-            message: 'Error al realizar la búsqueda en Firestore',
+            message: 'Error al realizar la búsqueda en MongoDB',
             error: error.message
         });
     }
