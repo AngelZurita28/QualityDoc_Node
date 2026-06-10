@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile.dev
     container_name: node_backend
     ports:
-      - "3000:3000"
+      - "0.0.0.0:3000:3000"
     environment:
       - PORT=3000
       - JSON_BODY_LIMIT=${JSON_BODY_LIMIT:-15mb}

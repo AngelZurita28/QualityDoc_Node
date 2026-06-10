@@ -57,6 +57,7 @@ MONGO_PASS=$mongoPasswordPlain
 GEMINI_API_KEY=$geminiKey
 GEMINI_MODEL=gemini-2.5-flash-lite
 PORT=3000
+HOST=0.0.0.0
 JSON_BODY_LIMIT=15mb
 MONGO_DB=QualityDocDB
 MONGO_HOST=127.0.0.1

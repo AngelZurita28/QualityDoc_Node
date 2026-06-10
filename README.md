@@ -37,11 +37,12 @@ El proyecto utiliza Docker para facilitar el despliegue del entorno de desarroll
     GEMINI_API_KEY=...
     GEMINI_MODEL=gemini-2.5-flash-lite
     PORT=3000
+    HOST=0.0.0.0
     JSON_BODY_LIMIT=15mb
     MONGO_DB=QualityDocDB
     ```
 2.  Levanta un contenedor de **MongoDB** con persistencia de datos.
-3.  Levanta el contenedor de la **API (Node.js)** y publica el puerto `3000`.
+3.  Levanta el contenedor de la **API (Node.js)** y publica el puerto `0.0.0.0:3000:3000`.
     *   La API queda accesible desde el host en `http://localhost:3000`.
     *   Dentro de Docker, la API se conecta a MongoDB usando el host de servicio `mongodb:27017`.
     *   El backend construye internamente la URI de MongoDB usando `MONGO_USER`, `MONGO_PASS`, `MONGO_DB`, `MONGO_HOST` y `MONGO_PORT`.

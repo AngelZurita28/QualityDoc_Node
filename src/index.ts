@@ -37,8 +37,9 @@ app.get('/api/test-db', async (req: Request, res: Response) => {
 });
 
 const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => {
-    console.log(`Servidor backend corriendo en el puerto ${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0';
+const server = app.listen(Number(PORT), HOST, () => {
+    console.log(`Servidor backend corriendo en http://${HOST}:${PORT}`);
 });
 
 server.on('error', (error: NodeJS.ErrnoException) => {
